@@ -3,6 +3,8 @@ from __future__ import annotations
 import cgi
 import html
 import json
+import base64
+import os
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -14,8 +16,9 @@ from buildcheck_pdf_report import build_pdf_report
 
 
 ROOT = Path(__file__).resolve().parent
-UPLOAD_DIR = ROOT / "uploads"
-REPORT_DIR = ROOT / "output" / "reports"
+RUNTIME_DIR = Path(os.environ.get("TMPDIR", "/tmp")) if os.environ.get("VERCEL") else ROOT
+UPLOAD_DIR = RUNTIME_DIR / "uploads"
+REPORT_DIR = RUNTIME_DIR / "output" / "reports"
 PORT = 8080
 
 
@@ -57,7 +60,8 @@ class BuildCheckHandler(BaseHTTPRequestHandler):
         try:
             form = self._read_form()
             report_id = _field_value(form, "report_id")
-            payload = load_report_payload(report_id)
+            payload_text = _field_value(form, "report_payload")
+            payload = decode_payload(payload_text) if payload_text else load_report_payload(report_id)
             selected_scheme_ids = _field_values(form, "schemes")
             available_schemes = {scheme["id"]: scheme for scheme in payload.get("applicable_schemes", [])}
             if not selected_scheme_ids:
@@ -181,6 +185,19 @@ def load_report_payload(report_id: str) -> dict:
     if not path.exists():
         raise ValueError("Report expired or missing. Please run the analysis again.")
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def encode_payload(payload: dict) -> str:
+    raw = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+    return base64.urlsafe_b64encode(raw).decode("ascii")
+
+
+def decode_payload(value: str) -> dict:
+    try:
+        raw = base64.urlsafe_b64decode(value.encode("ascii"))
+        return json.loads(raw.decode("utf-8"))
+    except Exception as exc:
+        raise ValueError("Report data could not be read. Please run the analysis again.") from exc
 
 
 def safe_filename(value: str) -> str:
@@ -566,11 +583,19 @@ def render_scheme_cards(schemes: list[dict], report_id: str) -> str:
               </div>
             </article>"""
         )
+    payload_value = ""
+    if report_id:
+        try:
+            payload_value = encode_payload(load_report_payload(report_id))
+        except ValueError:
+            payload_value = ""
+
     return f"""<section class="panel">
       <h2>Applicable Government Schemes</h2>
       <p class="muted">{len(schemes)} Maharashtra scheme(s) identified for this project. Select whichever schemes you want included in the PDF report.</p>
       <form method="post" action="/download-report">
         <input type="hidden" name="report_id" value="{html.escape(report_id)}">
+        <input type="hidden" name="report_payload" value="{html.escape(payload_value)}">
         <div class="scheme-grid">{''.join(cards)}</div>
         <button type="submit">Download PDF Report</button>
       </form>

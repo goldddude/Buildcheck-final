@@ -6,3 +6,4 @@ tmp/
 output/reports/*.json
 output/reports/sample_download_report.pdf
 output/reports/scheme_test_report.pdf
+output/reports/deploy_test_report.pdf
