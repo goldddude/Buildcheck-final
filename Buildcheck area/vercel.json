@@ -2,15 +2,7 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "routes": [
     {
-      "src": "/",
-      "dest": "/api/index.py"
-    },
-    {
-      "src": "/analyze",
-      "dest": "/api/index.py"
-    },
-    {
-      "src": "/download-report",
+      "src": "/(.*)",
       "dest": "/api/index.py"
     }
   ],
